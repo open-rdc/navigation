@@ -579,7 +579,7 @@ void pf_delete_sample_on_cost(pf_t *pf)
   {
     assert(i<set_a->sample_count);
     sample_a = set_a->samples + i;
-    
+
     int mi, mj;
     int occ_state;
     mi = MAP_GXWX(pf->map, sample_a->pose.v[0]);
@@ -606,6 +606,22 @@ void pf_delete_sample_on_cost(pf_t *pf)
 
   // Re-compute cluster statistics
   pf_cluster_stats(pf, set_b);
+
+/*
+  // test of correction weights
+  // set variable not set_b but set_a
+  pf_cluster_stats(pf, set_a);
+  // exchange data from set_a to set_b
+  set_b->mean.v[0] = set_a->mean.v[0];
+  set_b->mean.v[1] = set_a->mean.v[1];
+  set_b->mean.v[2] = set_a->mean.v[2];
+
+  for (int j = 0; j < 2; j++)
+    for (int k = 0; k < 2; k++)
+      set_b->cov.m[j][k] = set_a->cov.m[j][k];
+
+  set_a->cov.m[2][2] = set_a->conv.m[2][2];
+*/
 
   // Use the newly created sample set
   pf->current_set = (pf->current_set + 1) % 2;
