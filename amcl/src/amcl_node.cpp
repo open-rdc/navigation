@@ -139,8 +139,11 @@ class AmclNode
 
     /**
      * @brief Uses TF and LaserScan messages from bag file to drive AMCL instead
+     * @param in_bag_fn input bagfile
+     * @param trigger_global_localization whether to trigger global localization
+     * before starting to process the bagfile
      */
-    void runFromBag(const std::string &in_bag_fn);
+    void runFromBag(const std::string &in_bag_fn, bool trigger_global_localization = false);
 
     int process();
     void savePoseToServer();
@@ -287,6 +290,7 @@ class AmclNode
     double init_cov_[3];
     laser_model_t laser_model_type_;
     bool tf_broadcast_;
+    bool selective_resampling_;
 
     bool do_reset_;
 
@@ -327,9 +331,16 @@ main(int argc, char** argv)
     // run using ROS input
     ros::spin();
   }
-  else if ((argc == 3) && (std::string(argv[1]) == "--run-from-bag"))
+  else if ((argc >= 3) && (std::string(argv[1]) == "--run-from-bag"))
   {
-    amcl_node_ptr->runFromBag(argv[2]);
+    if (argc == 3)
+    {
+      amcl_node_ptr->runFromBag(argv[2]);
+    }
+    else if ((argc == 4) && (std::string(argv[3]) == "--global-localization"))
+    {
+      amcl_node_ptr->runFromBag(argv[2], true);
+    }
   }
 
   // Without this, our boost locks are not shut down nicely
@@ -435,6 +446,7 @@ AmclNode::AmclNode() :
   private_nh_.param("base_frame_id", base_frame_id_, std::string("base_link"));
   private_nh_.param("global_frame_id", global_frame_id_, std::string("map"));
   private_nh_.param("resample_interval", resample_interval_, 2);
+  private_nh_.param("selective_resampling", selective_resampling_, false);
   double tmp_tol;
   private_nh_.param("transform_tolerance", tmp_tol, 0.1);
   private_nh_.param("recovery_alpha_slow", alpha_slow_, 0.001);
@@ -588,6 +600,11 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
   beam_skip_distance_ = config.beam_skip_distance; 
   beam_skip_threshold_ = config.beam_skip_threshold; 
   
+  // Clear queued laser objects so that their parameters get updated
+  lasers_.clear();
+  lasers_update_.clear();
+  frame_to_laser_.clear();
+
   if( pf_ != NULL )
   {
     pf_free( pf_ );
@@ -599,6 +616,7 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
                  alpha_,reset_th_cov_,
                  (pf_init_model_fn_t)AmclNode::uniformPoseGenerator,
                  (void *)map_);
+  pf_set_selective_resampling(pf_, selective_resampling_);
   pf_err_ = config.kld_err; 
   pf_z_ = config.kld_z; 
   pf_->pop_err = pf_err_;
@@ -662,7 +680,7 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
 }
 
 
-void AmclNode::runFromBag(const std::string &in_bag_fn)
+void AmclNode::runFromBag(const std::string &in_bag_fn, bool trigger_global_localization)
 {
   rosbag::Bag bag;
   bag.open(in_bag_fn, rosbag::bagmode::Read);
@@ -693,6 +711,12 @@ void AmclNode::runFromBag(const std::string &in_bag_fn)
     }
     ROS_INFO("Waiting for map...");
     ros::getGlobalCallbackQueue()->callAvailable(ros::WallDuration(1.0));
+  }
+
+  if (trigger_global_localization)
+  {
+    std_srvs::Empty empty_srv;
+    globalLocalizationCallback(empty_srv.request, empty_srv.response);
   }
 
   BOOST_FOREACH(rosbag::MessageInstance const msg, view)
@@ -896,6 +920,7 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
                  alpha_,reset_th_cov_,
                  (pf_init_model_fn_t)AmclNode::uniformPoseGenerator,
                  (void *)map_);
+  pf_set_selective_resampling(pf_, selective_resampling_);
   pf_->pop_err = pf_err_;
   pf_->pop_z = pf_z_;
 

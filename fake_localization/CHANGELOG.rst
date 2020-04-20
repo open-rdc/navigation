@@ -2,6 +2,18 @@
 Changelog for package fake_localization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.16.6 (2020-03-18)
+-------------------
+
+1.16.5 (2020-03-15)
+-------------------
+
+1.16.4 (2020-03-04)
+-------------------
+* remove signals dep (`#945 <https://github.com/cobalt-robotics/navigation/issues/945>`_)
+  Boost > 1.7 has signals by default
+* Contributors: acxz
+
 1.16.3 (2019-11-15)
 -------------------
 * Merge pull request `#831 <https://github.com/ros-planning/navigation/issues/831>`_ from ros-planning/feature/remove_slashes
