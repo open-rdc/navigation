@@ -128,6 +128,10 @@ typedef struct _pf_t
   // Decay rates for running averages
   double alpha_slow, alpha_fast;
 
+  // ER threshold
+  bool do_reset;
+  double alpha, reset_th_cov;
+
   // Function used to draw random pose samples
   pf_init_model_fn_t random_pose_fn;
   void *random_pose_data;
@@ -143,7 +147,11 @@ typedef struct _pf_t
 // Create a new filter
 pf_t *pf_alloc(int min_samples, int max_samples,
                double alpha_slow, double alpha_fast,
+	       bool do_reset,
+	       double alpha, double reset_th_cov,
                pf_init_model_fn_t random_pose_fn, void *random_pose_data);
+
+void pf_set_reset_flag(pf_t *pf, bool flag);
 
 // Free an existing filter
 void pf_free(pf_t *pf);

@@ -25,6 +25,7 @@
 #include <map>
 #include <cmath>
 #include <memory>
+#include <stdbool.h>
 
 #include <boost/bind.hpp>
 #include <boost/thread/mutex.hpp>
@@ -52,6 +53,7 @@
 #include "nav_msgs/GetMap.h"
 #include "nav_msgs/SetMap.h"
 #include "std_srvs/Empty.h"
+#include "std_srvs/SetBool.h"
 
 // For transform support
 #include "tf2/LinearMath/Transform.h"
@@ -169,6 +171,8 @@ class AmclNode
                                     std_srvs::Empty::Response& res);
     bool setMapCallback(nav_msgs::SetMap::Request& req,
                         nav_msgs::SetMap::Response& res);
+    bool setResetFlagCallback(std_srvs::SetBool::Request& req,
+			      std_srvs::SetBool::Response& res);
 
     void laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan);
     void initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg);
@@ -253,6 +257,7 @@ class AmclNode
     ros::ServiceServer global_loc_srv_;
     ros::ServiceServer nomotion_update_srv_; //to let amcl update samples without requiring motion
     ros::ServiceServer set_map_srv_;
+    ros::ServiceServer set_reset_flag_srv_;
     ros::Subscriber initial_pose_sub_old_;
     ros::Subscriber map_sub_;
 
@@ -274,6 +279,7 @@ class AmclNode
     int max_beams_, min_particles_, max_particles_;
     double alpha1_, alpha2_, alpha3_, alpha4_, alpha5_;
     double alpha_slow_, alpha_fast_;
+    double alpha_, reset_th_cov_;
     double z_hit_, z_short_, z_max_, z_rand_, sigma_hit_, lambda_short_;
   //beam skip related params
     bool do_beamskip_;
@@ -285,6 +291,8 @@ class AmclNode
     laser_model_t laser_model_type_;
     bool tf_broadcast_;
     bool selective_resampling_;
+
+    bool do_reset_;
 
     void reconfigureCB(amcl::AMCLConfig &config, uint32_t level);
 
@@ -353,7 +361,8 @@ AmclNode::AmclNode() :
 	      private_nh_("~"),
         initial_pose_hyp_(NULL),
         first_map_received_(false),
-        first_reconfigure_call_(true)
+        first_reconfigure_call_(true),
+	do_reset_(true)
 {
   boost::recursive_mutex::scoped_lock l(configuration_mutex_);
 
@@ -442,6 +451,8 @@ AmclNode::AmclNode() :
   private_nh_.param("transform_tolerance", tmp_tol, 0.1);
   private_nh_.param("recovery_alpha_slow", alpha_slow_, 0.001);
   private_nh_.param("recovery_alpha_fast", alpha_fast_, 0.1);
+  private_nh_.param("reset_th_alpha",alpha_,0.001);
+  private_nh_.param("reset_th_cov",reset_th_cov_,0.0004);
   private_nh_.param("tf_broadcast", tf_broadcast_, true);
 
   // For diagnostics
@@ -475,6 +486,8 @@ AmclNode::AmclNode() :
                                          this);
   nomotion_update_srv_= nh_.advertiseService("request_nomotion_update", &AmclNode::nomotionUpdateCallback, this);
   set_map_srv_= nh_.advertiseService("set_map", &AmclNode::setMapCallback, this);
+
+  set_reset_flag_srv_ = nh_.advertiseService("set_reset_flag",&AmclNode::setResetFlagCallback, this);
 
   laser_scan_sub_ = new message_filters::Subscriber<sensor_msgs::LaserScan>(nh_, scan_topic_, 100);
   laser_scan_filter_ = 
@@ -599,6 +612,8 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
   }	
   pf_ = pf_alloc(min_particles_, max_particles_,
                  alpha_slow_, alpha_fast_,
+		 do_reset_,
+                 alpha_,reset_th_cov_,
                  (pf_init_model_fn_t)AmclNode::uniformPoseGenerator,
                  (void *)map_);
   pf_set_selective_resampling(pf_, selective_resampling_);
@@ -901,6 +916,8 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
   // Create the particle filter
   pf_ = pf_alloc(min_particles_, max_particles_,
                  alpha_slow_, alpha_fast_,
+		 do_reset_,
+                 alpha_,reset_th_cov_,
                  (pf_init_model_fn_t)AmclNode::uniformPoseGenerator,
                  (void *)map_);
   pf_set_selective_resampling(pf_, selective_resampling_);
@@ -1109,6 +1126,19 @@ AmclNode::setMapCallback(nav_msgs::SetMap::Request& req,
 {
   handleMapMessage(req.map);
   handleInitialPoseMessage(req.initial_pose);
+  res.success = true;
+  return true;
+}
+
+bool
+AmclNode::setResetFlagCallback(std_srvs::SetBool::Request& req,
+                               std_srvs::SetBool::Response& res)
+{
+  do_reset_ = req.data;
+  // ROS_INFO("do_reset: %d \n", (int)do_reset_);
+  res.message = (do_reset_) ? std::string("true") : std::string("false");
+  pf_set_reset_flag(pf_, do_reset_);
+
   res.success = true;
   return true;
 }
