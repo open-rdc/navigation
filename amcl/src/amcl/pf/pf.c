@@ -620,7 +620,7 @@ void pf_delete_sample_on_cost(pf_t *pf)
     for (int k = 0; k < 2; k++)
       set_b->cov.m[j][k] = set_a->cov.m[j][k];
 
-  set_a->cov.m[2][2] = set_a->conv.m[2][2];
+  set_a->cov.m[2][2] = set_a->cov.m[2][2];
 */
 
   // Use the newly created sample set
