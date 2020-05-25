@@ -152,16 +152,22 @@ class AmclNode
     bool setMapCallback(nav_msgs::SetMap::Request& req,
                         nav_msgs::SetMap::Response& res);
 
+    bool setCostMapCallback(nav_msgs::SetMap::Request& req,
+                        nav_msgs::SetMap::Response& res);
+
     bool setResetFlagCallback(std_srvs::SetBool::Request& req,
 			      std_srvs::SetBool::Response& res);
     void laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan);
     void initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg);
     void handleInitialPoseMessage(const geometry_msgs::PoseWithCovarianceStamped& msg);
     void mapReceived(const nav_msgs::OccupancyGridConstPtr& msg);
+    void costmapReceived(const nav_msgs::OccupancyGridConstPtr& msg);
 
     void handleMapMessage(const nav_msgs::OccupancyGrid& msg);
+    void handleCostMapMessage(const nav_msgs::OccupancyGrid& msg);
     void freeMapDependentMemory();
     map_t* convertMap( const nav_msgs::OccupancyGrid& map_msg );
+    map_t* convertCostMap( const nav_msgs::OccupancyGrid& map_msg );
     void updatePoseFromServer();
     void applyInitialPose();
 
@@ -178,7 +184,7 @@ class AmclNode
     std::string global_frame_id_;
 
     bool use_map_topic_;
-    bool first_map_only_;
+    bool first_map_only_, first_costmap_only_;
 
     ros::Duration gui_publish_period;
     ros::Time save_pose_last_time;
@@ -187,6 +193,7 @@ class AmclNode
     geometry_msgs::PoseWithCovarianceStamped last_published_pose;
 
     map_t* map_;
+    map_t* costmap_;
     char* mapdata;
     int sx, sy;
     double resolution;
@@ -241,10 +248,11 @@ class AmclNode
     ros::ServiceServer set_map_srv_;
     ros::Subscriber initial_pose_sub_old_;
     ros::Subscriber map_sub_;
+    ros::Subscriber costmap_sub_;
     
     ros::ServiceServer set_reset_flag_srv_;
     amcl_hyp_t* initial_pose_hyp_;
-    bool first_map_received_;
+    bool first_map_received_, first_costmap_received_;
     bool first_reconfigure_call_;
 
     boost::recursive_mutex configuration_mutex_;
@@ -274,6 +282,9 @@ class AmclNode
     ros::Time last_laser_received_ts_;
     ros::Duration laser_check_interval_;
     void checkLaserReceived(const ros::TimerEvent& event);
+
+    bool do_delete_sample_on_cost_;
+    std::string costmap_topic_;
 };
 
 std::vector<std::pair<int,int> > AmclNode::free_space_indices;
@@ -322,6 +333,7 @@ AmclNode::AmclNode() :
         sent_first_transform_(false),
         latest_tf_valid_(false),
         map_(NULL),
+        costmap_(NULL),
         pf_(NULL),
         resample_count_(0),
         odom_(NULL),
@@ -329,6 +341,8 @@ AmclNode::AmclNode() :
 	      private_nh_("~"),
         initial_pose_hyp_(NULL),
         first_map_received_(false),
+        first_costmap_received_(false),
+        first_costmap_only_(true),
         first_reconfigure_call_(true),
 	do_reset_(true)
 {
@@ -416,6 +430,9 @@ AmclNode::AmclNode() :
   private_nh_.param("do_expansion_resettings",do_reset_,do_reset_);
   private_nh_.param("tf_broadcast", tf_broadcast_, true);
 
+  private_nh_.param("do_delete_sample_on_cost", do_delete_sample_on_cost_, false);
+  private_nh_.param("costmap_topic", costmap_topic_, std::string("/move_base/global_costmap/costmap"));
+
   transform_tolerance_.fromSec(tmp_tol);
 
   {
@@ -455,6 +472,9 @@ AmclNode::AmclNode() :
   } else {
     requestMap();
   }
+
+  if(do_delete_sample_on_cost_)costmap_sub_ = nh_.subscribe(costmap_topic_, 1, &AmclNode::costmapReceived, this);
+
   m_force_update = false;
 
   dsrv_ = new dynamic_reconfigure::Server<amcl::AMCLConfig>(ros::NodeHandle("~"));
@@ -808,6 +828,19 @@ AmclNode::mapReceived(const nav_msgs::OccupancyGridConstPtr& msg)
 }
 
 void
+AmclNode::costmapReceived(const nav_msgs::OccupancyGridConstPtr& msg)
+{
+  if( first_costmap_only_ && first_costmap_received_ ) {
+    return;
+  }
+
+  handleCostMapMessage( *msg );
+
+  first_costmap_received_ = true;
+  ROS_INFO("costmap receveid");
+}
+
+void
 AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
 {
   boost::recursive_mutex::scoped_lock cfl(configuration_mutex_);
@@ -848,6 +881,7 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
                  (void *)map_);
   pf_->pop_err = pf_err_;
   pf_->pop_z = pf_z_;
+
 
   // Initialize the filter
   updatePoseFromServer();
@@ -898,6 +932,23 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
 }
 
 void
+AmclNode::handleCostMapMessage(const nav_msgs::OccupancyGrid& msg)
+{
+   ROS_INFO("Received a %d X %d map @ %.3f m/pix\n",
+           msg.info.width,
+           msg.info.height,
+           msg.info.resolution);
+
+  if(msg.header.frame_id != global_frame_id_)
+    ROS_WARN("Frame_id of cost map received:'%s' doesn't match global_frame_id:'%s;'. This could cause issues with reading published topics",
+             msg.header.frame_id.c_str(),
+             global_frame_id_.c_str());
+
+  costmap_ = convertMap(msg);
+  if(do_delete_sample_on_cost_)pf_set_map(pf_, costmap_);
+}
+
+void
 AmclNode::freeMapDependentMemory()
 {
   if( map_ != NULL ) {
@@ -944,6 +995,35 @@ AmclNode::convertMap( const nav_msgs::OccupancyGrid& map_msg )
 
   return map;
 }
+
+map_t*
+AmclNode::convertCostMap( const nav_msgs::OccupancyGrid& map_msg )
+{
+  map_t* map = map_alloc();
+  ROS_ASSERT(map);
+
+  map->size_x = map_msg.info.width;
+  map->size_y = map_msg.info.height;
+  map->scale = map_msg.info.resolution;
+  map->origin_x = map_msg.info.origin.position.x + (map->size_x / 2) * map->scale;
+  map->origin_y = map_msg.info.origin.position.y + (map->size_y / 2) * map->scale;
+  // Convert to player format
+  map->cells = (map_cell_t*)malloc(sizeof(map_cell_t)*map->size_x*map->size_y);
+  ROS_ASSERT(map->cells);
+  for(int i=0;i<map->size_x * map->size_y;i++)
+  {
+    if(map_msg.data[i] == 0)
+      map->cells[i].occ_state = 0;
+    else if(map_msg.data[i] > 0)
+      map->cells[i].occ_state = +1;
+    else if(map_msg.data[i] == -1)
+      map->cells[i].occ_state = -1;
+    else ROS_ERROR("costmap invalid value");
+  }
+
+  return map;
+}
+
 
 AmclNode::~AmclNode()
 {
@@ -1271,6 +1351,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
     pf_sample_set_t* set = pf_->sets + pf_->current_set;
     ROS_DEBUG("Num samples: %d\n", set->sample_count);
+
+    if(do_delete_sample_on_cost_ && first_costmap_received_)
+    {
+      pf_delete_sample_on_cost(pf_);
+    }
 
     // Publish the resulting cloud
     // TODO: set maximum rate for publishing

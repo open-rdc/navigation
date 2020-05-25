@@ -30,6 +30,9 @@
 
 #include "pf_vector.h"
 #include "pf_kdtree.h"
+#include <stdbool.h>
+
+#include "amcl/map/map.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -136,6 +139,9 @@ typedef struct _pf_t
 
   double dist_threshold; //distance threshold in each axis over which the pf is considered to not be converged
   int converged;
+
+  map_t *map;
+  bool map_received;
 } pf_t;
 
 
@@ -165,6 +171,11 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
 
 // Resample the distribution
 void pf_update_resample(pf_t *pf);
+
+// Delete sample on cost
+void pf_delete_sample_on_cost(pf_t *pf);
+
+void pf_set_map(pf_t *pf, map_t *map);
 
 // Compute the CEP statistics (mean and variance).
 void pf_get_cep_stats(pf_t *pf, pf_vector_t *mean, double *var);
