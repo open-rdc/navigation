@@ -139,6 +139,14 @@ typedef struct _pf_t
   double dist_threshold; //distance threshold in each axis over which the pf is considered to not be converged
   int converged; 
 
+  //ER+GR
+  double gnss_sigma;
+  double pf_sigma;
+  double reset_gnss_sigma[2];
+  double sigma_th;
+  double kld_th;
+  //ER+GR
+
   // boolean parameter to enamble/diable selective resampling
   int selective_resampling;
 } pf_t;
@@ -149,7 +157,13 @@ pf_t *pf_alloc(int min_samples, int max_samples,
                double alpha_slow, double alpha_fast,
 	       bool do_reset,
 	       double alpha, double reset_th_cov,
-               pf_init_model_fn_t random_pose_fn, void *random_pose_data);
+               pf_init_model_fn_t random_pose_fn, void *random_pose_data,
+               //ER+GR
+               double gnss_sigma, double pf_sigma,
+               double gr_sigma_x, double gr_sigma_y,
+               double pf_th_cov, double kld_th
+               //ER+GR
+               );
 
 void pf_set_reset_flag(pf_t *pf, bool flag);
 
@@ -204,6 +218,22 @@ int pf_update_converged(pf_t *pf);
 
 //sets the current set and pf converged values to zero
 void pf_init_converged(pf_t *pf);
+
+//ER+GR
+typedef struct amcl_state_{
+    double max_weight_pose[3];
+    double total_weight;
+    double average_weight;
+    double beta;
+    double particle_num;
+    double particle_sigma[2];
+    double kld_t; //Kullback–Leibler divergence
+} amcl_state;
+
+
+void state_init(amcl_state *state_t);
+void normalizeParticle(pf_t *pf, amcl_state *state_t);
+//ER+GR
 
 void pf_copy_set(pf_sample_set_t* set_a, pf_sample_set_t* set_b);
 

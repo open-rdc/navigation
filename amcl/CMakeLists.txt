@@ -23,6 +23,7 @@ find_package(catkin REQUIRED
     tf2_geometry_msgs
     tf2_msgs
     tf2_ros
+    ecl_eigen
 )
 
 find_package(Boost REQUIRED)
@@ -81,7 +82,8 @@ add_library(amcl_map
 add_library(amcl_sensors
                     src/amcl/sensors/amcl_sensor.cpp
                     src/amcl/sensors/amcl_odom.cpp
-                    src/amcl/sensors/amcl_laser.cpp)
+                    src/amcl/sensors/amcl_laser.cpp 
+                    src/amcl/sensors/amcl_gnss.cpp)
 target_link_libraries(amcl_sensors amcl_map amcl_pf)
 
 

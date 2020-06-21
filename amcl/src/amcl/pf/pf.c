@@ -48,7 +48,13 @@ pf_t *pf_alloc(int min_samples, int max_samples,
                double alpha_slow, double alpha_fast,
                bool do_reset,
                double alpha, double reset_th_cov,
-	       pf_init_model_fn_t random_pose_fn, void *random_pose_data)
+	       pf_init_model_fn_t random_pose_fn, void *random_pose_data,
+               //ER+GR
+               double gnss_sigma, double pf_sigma,
+               double gr_sigma_x, double gr_sigma_y,
+               double pf_th_cov, double kld_th
+               //ER+GR
+               )
 {
   int i, j;
   pf_t *pf;
@@ -110,6 +116,15 @@ pf_t *pf_alloc(int min_samples, int max_samples,
   pf->do_reset = do_reset;
   pf->alpha = alpha;
   pf->reset_th_cov = reset_th_cov;
+
+  //ER+GR
+  pf->gnss_sigma = gnss_sigma;
+  pf->pf_sigma = pf_sigma;
+  pf->reset_gnss_sigma[0] = gr_sigma_x;
+  pf->reset_gnss_sigma[1] = gr_sigma_y;
+  pf->sigma_th=pf_th_cov;
+  pf->kld_th = kld_th;
+  //ER+GR
 
   //set converged to 0
   pf_init_converged(pf);
@@ -286,6 +301,7 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
   
   if (total > 0.0)
   {
+    /*
     // Normalize weights
     double w_sum=0.0;
     double w_avg=0.0;
@@ -313,6 +329,7 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
 
     /*----------------------------------------------------------------------------------*/
     //pf->alpha=1.2;
+    /*
     double beta = 1.0 - (w_sum / pf->alpha);
     printf("beta : %lf w_sum : %lf pf->alpha : %lf\n", beta,w_sum,pf->alpha);
     if(beta > 0.0 && w_v < pf->reset_th_cov && pf->do_reset){    //誘拐状態
@@ -373,7 +390,8 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
             total = (*sensor_fn) (sensor_data, set);
         }
         reset_count++;
-    }
+        
+    }*/
     // else{
     //   printf("not kidnapped\n");
     // }
@@ -805,4 +823,104 @@ int pf_get_cluster_stats(pf_t *pf, int clabel, double *weight,
   return 1;
 }
 
+//ER+GR
 
+void state_init(amcl_state *state_t){
+    state_t->particle_sigma[0] = state_t->particle_sigma[1] = state_t->particle_sigma[2] = 0.3;
+    state_t->kld_t = 0.0;
+}
+
+void normalizeParticle(pf_t *pf, amcl_state *state_t){
+
+    int i;
+    pf_sample_set_t *set;
+    pf_sample_t *sample;
+    double total;
+
+    set = pf->sets + pf->current_set;
+
+    double max_particle[3];
+    double max_weight = 0.0;
+    int max_particle_num;
+
+    double x_sum = 0.0, y_sum = 0.0, theta_sum = 0.0;		//パラメータの和
+    double x_sumv = 0.0, y_sumv = 0.0, theta_sumv = 0.0;	    //２乗和
+    double x_v = 0.0, y_v = 0.0, theta_v = 0.0;		        //分散
+    double v_limit = 20.0;					                //分散の制限
+
+    // Normalize weights
+    double w_sum = 0.0;
+    double w_avg=0.0;
+    double w_sumv = 0.0, w_v = 0.0;
+    for (i = 0; i < set->sample_count; i++){
+        sample = set->samples + i;
+        w_avg += sample->weight;
+        w_sum += sample->weight * sample->weight;
+        state_t->total_weight += sample->weight;
+        if(sample->weight > max_weight){
+            max_particle_num = i;
+            max_weight = sample->weight;
+        }
+        x_sum += sample->pose.v[0];
+        x_sumv += sample->pose.v[0] * sample->pose.v[0];
+        y_sum += sample->pose.v[1];
+        y_sumv += sample->pose.v[1] * sample->pose.v[1];
+        theta_sum += sample->pose.v[2];
+        theta_sumv += sample->pose.v[2] * sample->pose.v[2];
+
+        //sample->weight /= total;
+    }
+
+    x_v = (x_sumv - (x_sum * x_sum / set->sample_count)) / set->sample_count;
+    y_v = (y_sumv - (y_sum * y_sum / set->sample_count)) / set->sample_count;
+    theta_v = (theta_sumv - (theta_sum * theta_sum / set->sample_count)) / set->sample_count;
+    //分散の制限, オーバーフロー防止
+    if(x_v >= v_limit){
+        x_v = v_limit;
+    }
+    else if(x_v <= -v_limit){
+        x_v = -v_limit;
+    }
+
+    if(y_v >= v_limit){
+        y_v = v_limit;
+     }
+     else if(y_v <= -v_limit){
+         y_v = -v_limit;
+     }
+
+     if(theta_v >= M_PI/2){
+        theta_v = M_PI/2;
+     }
+     else if(theta_v <= -M_PI/2){
+         theta_v = -M_PI/2;
+     }
+
+    sample = set->samples + max_particle_num;
+    state_t->max_weight_pose[0] = sample->pose.v[0];
+    state_t->max_weight_pose[1] = sample->pose.v[1];
+    state_t->max_weight_pose[2] = sample->pose.v[2];
+    state_t->average_weight = state_t->total_weight / set->sample_count;
+    state_t->beta = 1 - state_t->average_weight / pf->alpha;
+    state_t->particle_num = set->sample_count;
+    state_t->particle_sigma[0] = x_v;
+    state_t->particle_sigma[1] = y_v;
+    state_t->particle_sigma[2] = theta_v;
+
+    w_v = ((w_sumv) - (w_sum * w_sum / set->sample_count)) / set->sample_count;
+    // Update running averages of likelihood of samples (Prob Rob p258)
+    //w_avg /= set->sample_count;
+    w_avg = w_sum / set->sample_count;
+    if(pf->w_slow == 0.0)
+        pf->w_slow = w_avg;
+    else
+        pf->w_slow += pf->alpha_slow * (w_avg - pf->w_slow);
+    if(pf->w_fast == 0.0)
+        pf->w_fast = w_avg;
+    else
+        pf->w_fast += pf->alpha_fast * (w_avg - pf->w_fast);
+    //printf("w_avg: %e slow: %e fast: %e\n",
+         //w_avg, pf->w_slow, pf->w_fast);
+
+}
+//ER+GR

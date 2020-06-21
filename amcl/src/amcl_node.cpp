@@ -37,6 +37,9 @@
 #include "amcl/pf/pf.h"
 #include "amcl/sensors/amcl_odom.h"
 #include "amcl/sensors/amcl_laser.h"
+//ER+GR
+#include "amcl/sensors/amcl_gnss.h"
+//ER+GR
 #include "portable_utils.hpp"
 
 #include "ros/assert.h"
@@ -54,6 +57,9 @@
 #include "nav_msgs/SetMap.h"
 #include "std_srvs/Empty.h"
 #include "std_srvs/SetBool.h"
+//ER+GR
+#include "sensor_msgs/NavSatFix.h"
+//ER+GR
 
 // For transform support
 #include "tf2/LinearMath/Transform.h"
@@ -299,6 +305,21 @@ class AmclNode
     ros::Time last_laser_received_ts_;
     ros::Duration laser_check_interval_;
     void checkLaserReceived(const ros::TimerEvent& event);
+
+    //ER+GR
+    // GNSSまわり
+    AMCLGnssSensor gnss_sensor;
+    GnssSensorData gnss_data_t;
+    ros::Subscriber gnss_sub_;
+    void gnssCallBack(const sensor_msgs::NavSatFixConstPtr &gnss_data);
+    amcl_state amcl_state_t;
+    bool use_ergr;
+    double gnss_sigma;
+    double pf_sigma;
+    double reset_gnss_sigmax, reset_gnss_sigmay;
+    double sigma_th_;
+    double kld_th;
+    //ER+GR
 };
 
 std::vector<std::pair<int,int> > AmclNode::free_space_indices;
@@ -455,6 +476,21 @@ AmclNode::AmclNode() :
   private_nh_.param("reset_th_cov",reset_th_cov_,0.0004);
   private_nh_.param("tf_broadcast", tf_broadcast_, true);
 
+  //ER+GR
+  // gnss周り
+  gnss_sub_ = nh_.subscribe("/gnss_point", 1, &AmclNode::gnssCallBack, this);
+  //amcl_state_t.particle_sigma[0] = 0.3;
+  state_init(&amcl_state_t);
+  gnss_sensor.initGnssData(&gnss_data_t);
+  private_nh_.param("use_ERGR", use_ergr, false);
+  private_nh_.param("gnss_measure_sigma", gnss_sigma, 0.5);
+  private_nh_.param("particle_sigma", pf_sigma, 0.5);
+  private_nh_.param("gnss_sigmax", reset_gnss_sigmax, 2.0);
+  private_nh_.param("gnss_sigmay", reset_gnss_sigmay, 2.0);
+  private_nh_.param("particle_sigma_th", sigma_th_, 10.0);
+  private_nh_.param("kld_th", kld_th, 10.0);
+  //ER+GR
+
   // For diagnostics
   private_nh_.param("std_warn_level_x", std_warn_level_x_, 0.2);
   private_nh_.param("std_warn_level_y", std_warn_level_y_, 0.2);
@@ -520,6 +556,13 @@ AmclNode::AmclNode() :
   diagnosic_updater_.setHardwareID("None");
   diagnosic_updater_.add("Standard deviation", this, &AmclNode::standardDeviationDiagnostics);
 }
+
+//ER+GR
+void AmclNode::gnssCallBack(const sensor_msgs::NavSatFixConstPtr &gnss_data){
+    gnss_data_t.gnss_x = gnss_data->latitude;
+    gnss_data_t.gnss_y = gnss_data->longitude;
+}
+//ER+GR
 
 void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
 {
@@ -615,7 +658,13 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
 		 do_reset_,
                  alpha_,reset_th_cov_,
                  (pf_init_model_fn_t)AmclNode::uniformPoseGenerator,
-                 (void *)map_);
+                 (void *)map_,
+                 //ER+GR
+                 gnss_sigma, pf_sigma,
+                 reset_gnss_sigmax, reset_gnss_sigmay,
+                 sigma_th_, kld_th
+                 //ER+GR
+                 );
   pf_set_selective_resampling(pf_, selective_resampling_);
   pf_err_ = config.kld_err; 
   pf_z_ = config.kld_z; 
@@ -919,7 +968,13 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
 		 do_reset_,
                  alpha_,reset_th_cov_,
                  (pf_init_model_fn_t)AmclNode::uniformPoseGenerator,
-                 (void *)map_);
+                 (void *)map_,
+                 //ER+GR
+                 gnss_sigma, pf_sigma,
+                 reset_gnss_sigmax, reset_gnss_sigmay,
+                 sigma_th_, kld_th
+                 //ER+GR
+                 );
   pf_set_selective_resampling(pf_, selective_resampling_);
   pf_->pop_err = pf_err_;
   pf_->pop_z = pf_z_;
@@ -1336,7 +1391,25 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
               (i * angle_increment);
     }
 
+    //ER+GR
+    //amcl_state amcl_state_t;
+    //ER+GR
+
     lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
+
+    //ER+GR
+    normalizeParticle(pf_, &amcl_state_t);
+    //ROS_INFO("ER+GR:particle_beta: %lf",amcl_state_t.beta);
+    if(amcl_state_t.beta > 0.0){
+        ROS_ERROR("ER+GR:Kidnapped");
+        if(use_ergr){
+            gnss_sensor.calKld(pf_, &gnss_data_t, &amcl_state_t);
+            gnss_sensor.ergr(pf_, &gnss_data_t, &amcl_state_t);
+        }else{
+            gnss_sensor.er(pf_, &amcl_state_t);
+        }
+    }
+    //ER+GR
 
     lasers_update_[laser_index] = false;
 
