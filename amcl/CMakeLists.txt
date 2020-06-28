@@ -26,6 +26,7 @@ find_package(catkin REQUIRED
 )
 
 find_package(Boost REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 # dynamic reconfigure
 generate_dynamic_reconfigure_options(
@@ -46,11 +47,11 @@ catkin_package(
     tf2_msgs
     tf2_ros
   INCLUDE_DIRS include
-  LIBRARIES amcl_sensors amcl_map amcl_pf
+  LIBRARIES amcl_sensors amcl_map amcl_pf amcl_resets
 )
 
 include_directories(include)
-include_directories(${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
+include_directories(${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS} ${Eigen3_INCLUDE_DIRS})
 include_directories(src/include)
 
 check_include_file(unistd.h HAVE_UNISTD_H)
@@ -82,7 +83,11 @@ add_library(amcl_sensors
                     src/amcl/sensors/amcl_sensor.cpp
                     src/amcl/sensors/amcl_odom.cpp
                     src/amcl/sensors/amcl_laser.cpp)
-target_link_libraries(amcl_sensors amcl_map amcl_pf)
+
+add_library(amcl_resets
+                    src/amcl/resets/expansion_resetting.cpp
+                    src/amcl/resets/gnss_resetting.cpp) 
+target_link_libraries(amcl_sensors amcl_map amcl_pf amcl_resets)
 
 
 add_executable(amcl
@@ -90,7 +95,7 @@ add_executable(amcl
 add_dependencies(amcl ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 target_link_libraries(amcl
-    amcl_sensors amcl_map amcl_pf
+    amcl_sensors amcl_map amcl_pf amcl_resets
     ${Boost_LIBRARIES}
     ${catkin_LIBRARIES}
 )
@@ -101,7 +106,7 @@ install(TARGETS
 )
 
 install(TARGETS
-    amcl_sensors amcl_map amcl_pf
+    amcl_sensors amcl_map amcl_pf amcl_resets
     ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
     LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
     RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}

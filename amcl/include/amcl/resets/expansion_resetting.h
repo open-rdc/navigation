@@ -1,0 +1,24 @@
+#ifndef EXPANSION_RESETTING_H
+#define EXPANSION_RESETTING_H
+
+#include "amcl/pf/pf.h"
+#include <random>
+
+namespace amcl{
+    class  AMCLExpansionResetting
+    {
+    private:
+        double expansion_rate_;
+        std::random_device seed_gen_;
+        std::default_random_engine engine_;
+        std::normal_distribution<> dist_;
+
+    public:
+         AMCLExpansionResetting();
+        ~ AMCLExpansionResetting();
+        virtual void run(pf_t *pf);
+    };
+
+} //namespace amcl
+
+#endif

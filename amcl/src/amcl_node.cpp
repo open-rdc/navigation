@@ -36,6 +36,8 @@
 #include "amcl/pf/pf.h"
 #include "amcl/sensors/amcl_odom.h"
 #include "amcl/sensors/amcl_laser.h"
+#include "amcl/resets/expansion_resetting.h"
+#include "amcl/resets/gnss_resetting.h"
 #include "portable_utils.hpp"
 
 #include "ros/assert.h"
@@ -222,6 +224,11 @@ class AmclNode
     int resample_count_;
     double laser_min_range_;
     double laser_max_range_;
+
+    AMCLExpansionResetting er;
+    AMCLGnssResetting gr;
+
+    gnss_t gnss;
 
     //Nomotion update control
     bool m_force_update;  // used to temporarily let amcl update samples even when no motion occurs...
@@ -1308,6 +1315,90 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
     lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
 
+    //ER + GR
+    pf_sample_set_t* set = pf_->sets + pf_->current_set; //set current particle
+    pf_sample_t *sample; //for revalue samples
+    std::vector<pf_sample_t> sample_tmp; //sample's value tmp, this use laser-sensor-update of gnss position
+
+    sample_tmp.resize(set->sample_count);
+    double max_weight=0;
+    for(int i=0; i<set->sample_count; i++){
+        sample = set->samples + i;
+        sample_tmp[i] = *sample; //tmp samples
+        if(sample->weight > max_weight){
+          max_weight = sample->weight; //extract particle max weight
+        }
+    }
+
+    //gnss_t element
+    gnss.pose.v[0]= set->mean.v[0] + 100;
+    gnss.pose.v[1]= set->mean.v[1] + 100;
+    gnss.cov.m[0][0]=set->cov.m[0][0]+1;
+    gnss.cov.m[0][1]=0.0;
+    gnss.cov.m[1][0]=0.0;
+    gnss.cov.m[1][1]=set->cov.m[1][1]+1;
+    gnss.weight=0.0;
+
+    //get KL divergence
+    double kl_divergence = gr.calc_kl_divergence(pf_, gnss);
+
+    //Laser sensor update on GNSS pose.
+    double rad_increment = 2*M_PI / set->sample_count;
+    double rad = -M_PI;
+    for(int i=0; i<set->sample_count; i++){
+      sample = set->samples + i;
+      sample->pose.v[0] = gnss.pose.v[0];
+      sample->pose.v[1] = gnss.pose.v[1];
+      sample->pose.v[2] = rad;
+      sample->weight = 1.0 / set->sample_count;
+      rad += rad_increment;
+    }
+    lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
+
+    double gnss_max_weight=0;
+    for(int i=0; i<set->sample_count; i++){
+        sample = set->samples + i;
+        if(sample->weight > gnss_max_weight){
+          gnss_max_weight = sample->weight; //extract gnss max weight
+        }
+    }
+
+    //return particle info before laser-sensor-update of gnss position
+    for(int i=0; i<set->sample_count; i++){
+      sample = set->samples + i;
+      *sample = sample_tmp[i];
+    }
+
+    //ER threshold
+    double sum_cov_xx_yy = set->cov.m[0][0] + set->cov.m[1][1]; 
+    double alpha_threshold = 0.0006;
+    double beta;
+    beta = 1- (max_weight/alpha_threshold);
+
+    //GR threshold
+    double kl_divergence_th = 20;
+    double gnss_max_weight_th = 0.0006;
+    
+    if(beta > 0 ){
+      if(sum_cov_xx_yy < 0.4){
+        ROS_WARN("row match ratio, expansion resetting.");
+        er.run(pf_);
+      }
+      else if(kl_divergence > kl_divergence_th && gnss_max_weight < gnss_max_weight_th){
+        ROS_WARN("row match ratio and high covariance, gnss resetting.");
+        gr.run(pf_, gnss);
+      }
+    }
+    
+    max_weight=0;
+    gnss_max_weight =0;
+
+    //ROS_DEBUG("sum_cov_xx_yy = %lf\n",sum_cov_xx_yy);
+    //ROS_DEBUG("beta = %lf\n",beta);
+    //ROS_DEBUG("max_weight = %lf\n",max_weight);
+    //ROS_DEBUG("gnss_max_weight = %lf\n",gnss_max_weight);
+    //ROS_DEBUG("kl_divergence = %lf\n",kl_divergence);
+
     lasers_update_[laser_index] = false;
 
     pf_odom_pose_ = pose;
@@ -1319,7 +1410,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       resampled = true;
     }
 
-    pf_sample_set_t* set = pf_->sets + pf_->current_set;
     ROS_DEBUG("Num samples: %d\n", set->sample_count);
 
     // Publish the resulting cloud
