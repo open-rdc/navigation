@@ -30,13 +30,15 @@ double reset_rate_;
 double kl_divergence_;
 std::random_device seed_gen_;
 std::default_random_engine engine_;
-std::normal_distribution<> dist_;
+std::normal_distribution<> dist_x;
+std::normal_distribution<> dist_y;
+std::uniform_real_distribution<> dist_theta;
     
 public:
     AMCLGnssResetting();
     ~AMCLGnssResetting();
-    virtual double calc_kl_divergence(pf_t *pf, const gnss_t gnss);
-    virtual void run(pf_t *pf, const gnss_t gnss);
+    virtual double calc_kl_divergence(pf_sample_set_t *set, const gnss_t gnss);
+    virtual void sampling(pf_sample_set_t *set, const gnss_t gnss);
 };
 
 }//namespace amcl

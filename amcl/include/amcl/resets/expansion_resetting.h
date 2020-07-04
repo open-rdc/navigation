@@ -2,6 +2,7 @@
 #define EXPANSION_RESETTING_H
 
 #include "amcl/pf/pf.h"
+#include "amcl/sensors/amcl_laser.h"
 #include <random>
 
 namespace amcl{
@@ -16,7 +17,7 @@ namespace amcl{
     public:
          AMCLExpansionResetting();
         ~ AMCLExpansionResetting();
-        virtual void run(pf_t *pf);
+        virtual void run(pf_sample_set_t *set);
     };
 
 } //namespace amcl

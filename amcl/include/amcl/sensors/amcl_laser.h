@@ -100,6 +100,8 @@ class AMCLLaser : public AMCLSensor
   // Determine the probability for the given pose
   private: static double LikelihoodFieldModel(AMCLLaserData *data, 
                                               pf_sample_set_t* set);
+  
+  public: static double get_total_LFM(AMCLLaserData *data, pf_sample_set_t* set);
 
   // Determine the probability for the given pose - more probablistic model 
   private: static double LikelihoodFieldModelProb(AMCLLaserData *data, 

@@ -14,8 +14,12 @@ AMCLGnssResetting::AMCLGnssResetting():engine_(seed_gen_())
 {
     reset_rate_ = 0.05;
 
-    std::normal_distribution<>::param_type param(0.0, reset_rate_);
-    dist_.param(param);
+    std::normal_distribution<>::param_type param_x(0.0, reset_rate_);
+    std::normal_distribution<>::param_type param_y(0.0, reset_rate_);
+    std::uniform_real_distribution<>::param_type param_theta(-M_PI, M_PI);
+    dist_x.param(param_x);
+    dist_y.param(param_y);
+    dist_theta.param(param_theta);
 }
 
 AMCLGnssResetting::~AMCLGnssResetting()
@@ -23,16 +27,12 @@ AMCLGnssResetting::~AMCLGnssResetting()
 }
 
 double
-AMCLGnssResetting::calc_kl_divergence(pf_t *pf, const gnss_t gnss){
+AMCLGnssResetting::calc_kl_divergence(pf_sample_set_t *set, const gnss_t gnss){
     Eigen::Vector2d pf_position;
 	Eigen::Matrix2d pf_cov;
 
 	Eigen::Vector2d gnss_position;
-	Eigen::Matrix2d	gnss_cov;
-
-    pf_sample_set_t *set;
-    set = pf->sets + pf->current_set;
-    
+	Eigen::Matrix2d	gnss_cov;    
     
     pf_position << set->mean.v[0],
                    set->mean.v[1];
@@ -54,16 +54,14 @@ AMCLGnssResetting::calc_kl_divergence(pf_t *pf, const gnss_t gnss){
 }
 
 void
-AMCLGnssResetting::run(pf_t *pf, const gnss_t gnss){
-    pf_sample_set_t *set;
+AMCLGnssResetting::sampling(pf_sample_set_t *set, const gnss_t gnss){
 	pf_sample_t *sample;
-
-    set = pf->sets + pf->current_set;
 
     for(int i=0; i<set->sample_count; i++){
             sample = set->samples + i;
-			sample->pose.v[0] = gnss.pose.v[0] + dist_(engine_);
-			sample->pose.v[1] = gnss.pose.v[1] + dist_(engine_);
+			sample->pose.v[0] = gnss.pose.v[0] + dist_x(engine_);
+			sample->pose.v[1] = gnss.pose.v[1] + dist_y(engine_);
+            sample->pose.v[2] = gnss.pose.v[1] + dist_theta(engine_);
             sample->weight = 1.0 / set->sample_count;
 	}
 }

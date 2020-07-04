@@ -11,11 +11,8 @@ AMCLExpansionResetting::AMCLExpansionResetting():engine_(seed_gen_())
 
 }
 
-void AMCLExpansionResetting::run(pf_t *pf){
-    pf_sample_set_t *set;
+void AMCLExpansionResetting::run(pf_sample_set_t *set){
     pf_sample_t *sample;
-
-    set = pf->sets + pf->current_set;
 
     for(int i=0; i<set->sample_count; i++){
         sample = set->samples + i;

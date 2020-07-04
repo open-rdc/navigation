@@ -1315,89 +1315,77 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
     lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
 
-    //ER + GR
     pf_sample_set_t* set = pf_->sets + pf_->current_set; //set current particle
-    pf_sample_t *sample; //for revalue samples
-    std::vector<pf_sample_t> sample_tmp; //sample's value tmp, this use laser-sensor-update of gnss position
 
-    sample_tmp.resize(set->sample_count);
-    double max_weight=0;
-    for(int i=0; i<set->sample_count; i++){
-        sample = set->samples + i;
-        sample_tmp[i] = *sample; //tmp samples
-        if(sample->weight > max_weight){
-          max_weight = sample->weight; //extract particle max weight
-        }
-    }
+    //ER + GR
+    bool use_er = true;
+    bool use_gr = true;
+    if(use_er || use_gr){
 
-    //gnss_t element
-    gnss.pose.v[0]= set->mean.v[0] + 100;
-    gnss.pose.v[1]= set->mean.v[1] + 100;
-    gnss.cov.m[0][0]=set->cov.m[0][0]+1;
-    gnss.cov.m[0][1]=0.0;
-    gnss.cov.m[1][0]=0.0;
-    gnss.cov.m[1][1]=set->cov.m[1][1]+1;
-    gnss.weight=0.0;
-
-    //get KL divergence
-    double kl_divergence = gr.calc_kl_divergence(pf_, gnss);
-
-    //Laser sensor update on GNSS pose.
-    double rad_increment = 2*M_PI / set->sample_count;
-    double rad = -M_PI;
-    for(int i=0; i<set->sample_count; i++){
-      sample = set->samples + i;
-      sample->pose.v[0] = gnss.pose.v[0];
-      sample->pose.v[1] = gnss.pose.v[1];
-      sample->pose.v[2] = rad;
-      sample->weight = 1.0 / set->sample_count;
-      rad += rad_increment;
-    }
-    lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
-
-    double gnss_max_weight=0;
-    for(int i=0; i<set->sample_count; i++){
-        sample = set->samples + i;
-        if(sample->weight > gnss_max_weight){
-          gnss_max_weight = sample->weight; //extract gnss max weight
-        }
-    }
-
-    //return particle info before laser-sensor-update of gnss position
-    for(int i=0; i<set->sample_count; i++){
-      sample = set->samples + i;
-      *sample = sample_tmp[i];
-    }
-
-    //ER threshold
-    double sum_cov_xx_yy = set->cov.m[0][0] + set->cov.m[1][1]; 
-    double alpha_threshold = 0.0006;
-    double beta;
-    beta = 1- (max_weight/alpha_threshold);
-
-    //GR threshold
-    double kl_divergence_th = 20;
-    double gnss_max_weight_th = 0.0006;
-    
-    if(beta > 0 ){
-      if(sum_cov_xx_yy < 0.4){
-        ROS_WARN("row match ratio, expansion resetting.");
-        er.run(pf_);
+      //get total weight for ER
+      if(use_er){
+        double sum_cov_xx_yy = set->cov.m[0][0] + set->cov.m[1][1]; 
+        double total_weight = lasers_[laser_index]->get_total_LFM(&ldata, set);
       }
-      else if(kl_divergence > kl_divergence_th && gnss_max_weight < gnss_max_weight_th){
-        ROS_WARN("row match ratio and high covariance, gnss resetting.");
-        gr.run(pf_, gnss);
-      }
-    }
-    
-    max_weight=0;
-    gnss_max_weight =0;
 
-    //ROS_DEBUG("sum_cov_xx_yy = %lf\n",sum_cov_xx_yy);
-    //ROS_DEBUG("beta = %lf\n",beta);
-    //ROS_DEBUG("max_weight = %lf\n",max_weight);
-    //ROS_DEBUG("gnss_max_weight = %lf\n",gnss_max_weight);
-    //ROS_DEBUG("kl_divergence = %lf\n",kl_divergence);
+      if(use_gr){
+        pf_sample_t *sample; //for revalue samples
+        pf_sample_t sample_tmp[set->sample_count]; //sample's value tmp, this use laser-sensor-update of gnss position
+
+        for(int i=0; i<set->sample_count; i++){
+            sample = set->samples + i;
+            sample_tmp[i] = *sample; //tmp samples
+        }
+
+        //gnss_t element
+        gnss.pose.v[0]= set->mean.v[0] + 100;
+        gnss.pose.v[1]= set->mean.v[1] + 100;
+        gnss.cov.m[0][0]=set->cov.m[0][0]+1;
+        gnss.cov.m[0][1]=0.0;
+        gnss.cov.m[1][0]=0.0;
+        gnss.cov.m[1][1]=set->cov.m[1][1]+1;
+        gnss.weight=0.0;
+
+        //get KL divergence
+        double kl_divergence = gr.calc_kl_divergence(set, gnss);
+
+        //get total weight for GR
+        gr.sampling(set, gnss);
+        double gnss_total_weight = lasers_[laser_index]->get_total_LFM(&ldata, set);
+
+        //overwriting particle info before get total weight for GR
+        for(int i=0; i<set->sample_count; i++){
+          sample = set->samples + i;
+          *sample = sample_tmp[i];
+        }
+      }
+
+      //ER threshold
+      double sum_cov_xx_yy_th = 0.4;
+      double alpha_threshold = 0.0006;
+      double beta = 1- (total_weight/alpha_threshold);
+
+      //GR threshold
+      double kl_divergence_th = 20;
+      double gnss_total_weight_th = 0.0006;
+      
+      if(beta > 0 ){
+        if(use_er && sum_cov_xx_yy < sum_cov_xx_yy_th){
+          ROS_WARN("row match ratio, expansion resetting.");
+          er.run(set);
+        }
+        else if(use_gr && kl_divergence > kl_divergence_th && gnss_total_weight < gnss_total_weight_th){
+          ROS_WARN("row match ratio and high covariance, gnss resetting.");
+          gr.sampling(set, gnss);
+        }
+      }
+
+      //ROS_DEBUG("sum_cov_xx_yy = %lf\n",sum_cov_xx_yy);
+      //ROS_DEBUG("beta = %lf\n",beta);
+      //ROS_DEBUG("total_weight = %lf\n",total_weight);
+      //ROS_DEBUG("gnss_total_weight = %lf\n",gnss_total_weight);
+      //ROS_DEBUG("kl_divergence = %lf\n",kl_divergence);
+    }
 
     lasers_update_[laser_index] = false;
 
