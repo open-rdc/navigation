@@ -228,7 +228,19 @@ class AmclNode
     AMCLExpansionResetting er;
     AMCLGnssResetting gr;
 
-    gnss_t gnss;
+    gnss_t gnss_;
+    ros::Time save_gnss_pose_last_time_;
+    ros::Subscriber gnss_pose_sub_;
+    void gnssPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg){
+      gnss_.pose.v[0] = msg->pose.pose.position.x;
+      gnss_.pose.v[1] = msg->pose.pose.position.y;
+      gnss_.pose.v[2] = msg->pose.pose.position.z;
+      gnss_.cov.m[0][0] = msg->pose.covariance[0];
+      gnss_.cov.m[0][1] = 0;
+      gnss_.cov.m[1][0] = 0;
+      gnss_.cov.m[1][1] = msg->pose.covariance[7];
+      save_gnss_pose_last_time_ = ros::Time::now();
+    }
 
     //Nomotion update control
     bool m_force_update;  // used to temporarily let amcl update samples even when no motion occurs...
@@ -1322,36 +1334,40 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     bool use_gr = true;
     if(use_er || use_gr){
 
+      double sum_cov_xx_yy;
+      double total_weight;
+      double kl_divergence;
+      double gnss_total_weight;
+      pf_sample_t *sample;
+      pf_sample_t sample_tmp[set->sample_count];
+
       //get total weight for ER
       if(use_er){
-        double sum_cov_xx_yy = set->cov.m[0][0] + set->cov.m[1][1]; 
-        double total_weight = lasers_[laser_index]->get_total_LFM(&ldata, set);
+        sum_cov_xx_yy = set->cov.m[0][0] + set->cov.m[1][1]; 
+        total_weight = lasers_[laser_index]->get_total_LFM(&ldata, set);
       }
 
       if(use_gr){
-        pf_sample_t *sample; //for revalue samples
-        pf_sample_t sample_tmp[set->sample_count]; //sample's value tmp, this use laser-sensor-update of gnss position
-
         for(int i=0; i<set->sample_count; i++){
             sample = set->samples + i;
             sample_tmp[i] = *sample; //tmp samples
         }
 
         //gnss_t element
-        gnss.pose.v[0]= set->mean.v[0] + 100;
-        gnss.pose.v[1]= set->mean.v[1] + 100;
-        gnss.cov.m[0][0]=set->cov.m[0][0]+1;
-        gnss.cov.m[0][1]=0.0;
-        gnss.cov.m[1][0]=0.0;
-        gnss.cov.m[1][1]=set->cov.m[1][1]+1;
-        gnss.weight=0.0;
+        gnss_.pose.v[0]= set->mean.v[0] + 100;
+        gnss_.pose.v[1]= set->mean.v[1] + 100;
+        gnss_.cov.m[0][0]=set->cov.m[0][0]+1;
+        gnss_.cov.m[0][1]=0.0;
+        gnss_.cov.m[1][0]=0.0;
+        gnss_.cov.m[1][1]=set->cov.m[1][1]+1;
+        gnss_.weight=0.0;
 
         //get KL divergence
-        double kl_divergence = gr.calc_kl_divergence(set, gnss);
+        kl_divergence = gr.calc_kl_divergence(set, gnss_);
 
         //get total weight for GR
-        gr.sampling(set, gnss);
-        double gnss_total_weight = lasers_[laser_index]->get_total_LFM(&ldata, set);
+        gr.sampling(set, gnss_);
+        gnss_total_weight = lasers_[laser_index]->get_total_LFM(&ldata, set);
 
         //overwriting particle info before get total weight for GR
         for(int i=0; i<set->sample_count; i++){
@@ -1376,15 +1392,15 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }
         else if(use_gr && kl_divergence > kl_divergence_th && gnss_total_weight < gnss_total_weight_th){
           ROS_WARN("row match ratio and high covariance, gnss resetting.");
-          gr.sampling(set, gnss);
+          gr.sampling(set, gnss_);
         }
       }
 
-      //ROS_DEBUG("sum_cov_xx_yy = %lf\n",sum_cov_xx_yy);
-      //ROS_DEBUG("beta = %lf\n",beta);
-      //ROS_DEBUG("total_weight = %lf\n",total_weight);
-      //ROS_DEBUG("gnss_total_weight = %lf\n",gnss_total_weight);
-      //ROS_DEBUG("kl_divergence = %lf\n",kl_divergence);
+      //ROS_DEBUG("sum_cov_xx_yy = %lf",sum_cov_xx_yy);
+      //ROS_DEBUG("beta = %lf",beta);
+      //ROS_DEBUG("total_weight = %lf",total_weight);
+      //ROS_DEBUG("gnss_total_weight = %lf",gnss_total_weight);
+      //ROS_DEBUG("kl_divergence = %lf",kl_divergence);
     }
 
     lasers_update_[laser_index] = false;
