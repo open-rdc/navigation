@@ -1379,20 +1379,20 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       }
 
       //ER threshold
-      double sum_cov_xx_yy_th = 0.4;
+      double sum_cov_xx_yy_th = 0.8;
       double alpha_threshold = 2.0;
       double beta = 1- (total_weight/alpha_threshold);
 
       //GR threshold
       double kl_divergence_th = 20;
-      double gnss_total_weight_th = 0.0006;
+      double gnss_total_weight_th = 1.5;
       
       if(beta > 0 ){
         if(use_er && sum_cov_xx_yy < sum_cov_xx_yy_th){
           ROS_WARN("row match ratio, expansion resetting.");
           er.run(set);
         }
-        else if(use_gr && kl_divergence > kl_divergence_th && gnss_total_weight < gnss_total_weight_th){
+        else if(use_gr && kl_divergence > kl_divergence_th && gnss_total_weight > gnss_total_weight_th){
           ROS_WARN("row match ratio and high covariance, gnss resetting.");
           gr.sampling(set, gnss_);
         }
