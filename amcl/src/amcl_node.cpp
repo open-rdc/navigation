@@ -525,6 +525,8 @@ AmclNode::AmclNode() :
 
   diagnosic_updater_.setHardwareID("None");
   diagnosic_updater_.add("Standard deviation", this, &AmclNode::standardDeviationDiagnostics);
+
+  gnss_pose_sub_ = nh_.subscribe("gps/position", 1, &AmclNode::gnssPoseReceived, this);
 }
 
 void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
@@ -1354,13 +1356,13 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }
 
         //gnss_t element
-        gnss_.pose.v[0]= set->mean.v[0] + 100;
-        gnss_.pose.v[1]= set->mean.v[1] + 100;
-        gnss_.cov.m[0][0]=set->cov.m[0][0]+1;
-        gnss_.cov.m[0][1]=0.0;
-        gnss_.cov.m[1][0]=0.0;
-        gnss_.cov.m[1][1]=set->cov.m[1][1]+1;
-        gnss_.weight=0.0;
+        //gnss_.pose.v[0]= set->mean.v[0] + 100;
+        //gnss_.pose.v[1]= set->mean.v[1] + 100;
+        //gnss_.cov.m[0][0]=set->cov.m[0][0]+1;
+        //gnss_.cov.m[0][1]=0.0;
+        //gnss_.cov.m[1][0]=0.0;
+        //gnss_.cov.m[1][1]=set->cov.m[1][1]+1;
+        //gnss_.weight=0.0;
 
         //get KL divergence
         kl_divergence = gr.calc_kl_divergence(set, gnss_);
@@ -1378,7 +1380,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
       //ER threshold
       double sum_cov_xx_yy_th = 0.4;
-      double alpha_threshold = 0.0006;
+      double alpha_threshold = 2.0;
       double beta = 1- (total_weight/alpha_threshold);
 
       //GR threshold
@@ -1396,11 +1398,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }
       }
 
-      //ROS_DEBUG("sum_cov_xx_yy = %lf",sum_cov_xx_yy);
-      //ROS_DEBUG("beta = %lf",beta);
-      //ROS_DEBUG("total_weight = %lf",total_weight);
-      //ROS_DEBUG("gnss_total_weight = %lf",gnss_total_weight);
-      //ROS_DEBUG("kl_divergence = %lf",kl_divergence);
+      ROS_ERROR("sum_cov_xx_yy = %lf",sum_cov_xx_yy);
+      ROS_ERROR("beta = %lf",beta);
+      ROS_ERROR("total_weight = %lf",total_weight);
+      ROS_ERROR("gnss_total_weight = %lf",gnss_total_weight);
+      ROS_ERROR("kl_divergence = %lf",kl_divergence);
     }
 
     lasers_update_[laser_index] = false;

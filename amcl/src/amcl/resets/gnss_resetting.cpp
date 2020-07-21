@@ -57,10 +57,13 @@ void
 AMCLGnssResetting::sampling(pf_sample_set_t *set, const gnss_t gnss){
 	pf_sample_t *sample;
 
+    std::normal_distribution<>::param_type param_x(0.0, std::sqrt(gnss.cov.m[0][0]));
+    std::normal_distribution<>::param_type param_y(0.0, std::sqrt(gnss.cov.m[1][1]));
+
     for(int i=0; i<set->sample_count; i++){
             sample = set->samples + i;
-			sample->pose.v[0] = gnss.pose.v[0] + dist_x(engine_);
-			sample->pose.v[1] = gnss.pose.v[1] + dist_y(engine_);
+			sample->pose.v[0] = gnss.pose.v[0] + dist_x(engine_, param_x);
+			sample->pose.v[1] = gnss.pose.v[1] + dist_y(engine_, param_y);
             sample->pose.v[2] = gnss.pose.v[1] + dist_theta(engine_);
             sample->weight = 1.0 / set->sample_count;
 	}
