@@ -54,6 +54,7 @@
 #include "nav_msgs/GetMap.h"
 #include "nav_msgs/SetMap.h"
 #include "std_srvs/Empty.h"
+#include "nav_msgs/Odometry.h"
 
 // For transform support
 #include "tf2/LinearMath/Transform.h"
@@ -229,8 +230,10 @@ class AmclNode
     AMCLGnssResetting gr;
 
     gnss_t gnss_;
+    gnss_t filter_gnss_;
     ros::Time save_gnss_pose_last_time_;
     ros::Subscriber gnss_pose_sub_;
+    ros::Subscriber gnss_odom_sub_;
     void gnssPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg){
       gnss_.pose.v[0] = msg->pose.pose.position.x;
       gnss_.pose.v[1] = msg->pose.pose.position.y;
@@ -239,6 +242,17 @@ class AmclNode
       gnss_.cov.m[0][1] = 0;
       gnss_.cov.m[1][0] = 0;
       gnss_.cov.m[1][1] = msg->pose.covariance[7];
+      save_gnss_pose_last_time_ = ros::Time::now();
+    }
+
+    void gnssOdomReceived(const nav_msgs::OdometryConstPtr& msg){
+      filter_gnss_.pose.v[0] = msg->pose.pose.position.x;
+      filter_gnss_.pose.v[1] = msg->pose.pose.position.y;
+      filter_gnss_.pose.v[2] = msg->pose.pose.position.z;
+      filter_gnss_.cov.m[0][0] = msg->pose.covariance[0];
+      filter_gnss_.cov.m[0][1] = 0;
+      filter_gnss_.cov.m[1][0] = 0;
+      filter_gnss_.cov.m[1][1] = msg->pose.covariance[7];
       save_gnss_pose_last_time_ = ros::Time::now();
     }
 
@@ -527,6 +541,8 @@ AmclNode::AmclNode() :
   diagnosic_updater_.add("Standard deviation", this, &AmclNode::standardDeviationDiagnostics);
 
   gnss_pose_sub_ = nh_.subscribe("gps/position", 1, &AmclNode::gnssPoseReceived, this);
+  gnss_odom_sub_ = nh_.subscribe("gps/odometry", 1, &AmclNode::gnssOdomReceived, this);
+
 }
 
 void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)

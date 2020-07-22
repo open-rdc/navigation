@@ -53,6 +53,11 @@ AMCLGnssResetting::calc_kl_divergence(pf_sample_set_t *set, const gnss_t gnss){
     return kl_divergence_;
 }
 
+double
+AMCLGnssResetting::calc_nd_pdf(gnss_t gnss0, gnss_t gnss1){
+    return 0;
+}
+
 void
 AMCLGnssResetting::sampling(pf_sample_set_t *set, const gnss_t gnss){
 	pf_sample_t *sample;
