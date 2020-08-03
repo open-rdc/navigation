@@ -17,6 +17,7 @@ namespace amcl{
     public:
          AMCLExpansionResetting();
         ~ AMCLExpansionResetting();
+        virtual double get_entropy(pf_sample_set_t *set);
         virtual void run(pf_sample_set_t *set);
     };
 

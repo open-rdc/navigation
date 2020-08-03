@@ -58,6 +58,16 @@ AMCLGnssResetting::calc_nd_pdf(gnss_t gnss0, gnss_t gnss1){
     return 0;
 }
 
+double AMCLGnssResetting::get_entropy(gnss_t gnss){
+    Eigen::Matrix2d	gnss_cov;
+    gnss_cov << gnss.cov.m[0][0],                0,                 
+                0,                gnss.cov.m[1][1];
+    
+    double entropy = std::log(gnss_cov.determinant())/2 + std::log(2*M_PI) + 1;
+
+    return entropy;
+}
+
 void
 AMCLGnssResetting::sampling(pf_sample_set_t *set, const gnss_t gnss){
 	pf_sample_t *sample;

@@ -1,5 +1,9 @@
 #include "amcl/resets/expansion_resetting.h"
 
+#include <Eigen/Core>
+#include <Eigen/Dense>
+#include <Eigen/LU>
+
 using namespace amcl;
 
 AMCLExpansionResetting::AMCLExpansionResetting():engine_(seed_gen_())
@@ -9,6 +13,16 @@ AMCLExpansionResetting::AMCLExpansionResetting():engine_(seed_gen_())
     std::normal_distribution<>::param_type param(0.0, expansion_rate_);
     dist_.param(param);
 
+}
+
+double AMCLExpansionResetting::get_entropy(pf_sample_set_t *set){
+    Eigen::Matrix2d	pf_cov;
+    pf_cov << set->cov.m[0][0],                0,                 
+                0,                set->cov.m[1][1];
+    
+    double entropy = std::log(pf_cov.determinant())/2 + std::log(2*M_PI) + 1;
+
+    return entropy;
 }
 
 void AMCLExpansionResetting::run(pf_sample_set_t *set){
