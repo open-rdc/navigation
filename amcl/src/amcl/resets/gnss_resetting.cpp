@@ -54,8 +54,30 @@ AMCLGnssResetting::calc_kl_divergence(pf_sample_set_t *set, const gnss_t gnss){
 }
 
 double
-AMCLGnssResetting::calc_nd_pdf(gnss_t gnss0, gnss_t gnss1){
-    return 0;
+AMCLGnssResetting::get_gaussian(pf_sample_set_t *set, gnss_t gnss){
+    Eigen::Vector2d pf_position;
+	Eigen::Matrix2d pf_cov;
+
+	Eigen::Vector2d gnss_position;
+	Eigen::Matrix2d	gnss_cov;    
+    
+    pf_position << set->mean.v[0],
+                   set->mean.v[1];
+
+    pf_cov << set->cov.m[0][0],                0,                 
+              0,                set->cov.m[1][1];
+
+    gnss_position << gnss.pose.v[0],
+                     gnss.pose.v[1];
+
+    gnss_cov << gnss.cov.m[0][0],                0,                 
+                0,                gnss.cov.m[1][1];
+
+    int d = pf_position.size();
+
+    double gaussian = 0;
+    
+    return gaussian;
 }
 
 double AMCLGnssResetting::get_entropy(gnss_t gnss){

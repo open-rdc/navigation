@@ -38,7 +38,7 @@ public:
     AMCLGnssResetting();
     ~AMCLGnssResetting();
     virtual double calc_kl_divergence(pf_sample_set_t *set, const gnss_t gnss);
-    virtual double calc_nd_pdf(gnss_t gnss0, gnss_t gnss1);
+    virtual double get_gaussian(pf_sample_set_t * set, gnss_t gnss);
     virtual double get_entropy(gnss_t gnss);
     virtual void sampling(pf_sample_set_t *set, const gnss_t gnss);
 };

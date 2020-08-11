@@ -229,6 +229,18 @@ class AmclNode
     AMCLExpansionResetting er;
     AMCLGnssResetting gr;
 
+    //ER threshold
+    bool use_er_;
+    double sum_cov_xx_yy_th_;
+    double pf_entropy_th_;
+    double alpha_threshold_;
+
+    //GR threshold
+    bool use_gr_;
+    double kl_divergence_th_;
+    double gnss_total_weight_th_;
+    double gnss_entropy_th_;
+
     gnss_t gnss_;
     gnss_t filter_gnss_;
     ros::Time save_gnss_pose_last_time_;
@@ -481,6 +493,18 @@ AmclNode::AmclNode() :
   private_nh_.param("std_warn_level_x", std_warn_level_x_, 0.2);
   private_nh_.param("std_warn_level_y", std_warn_level_y_, 0.2);
   private_nh_.param("std_warn_level_yaw", std_warn_level_yaw_, 0.1);
+
+  //ER threshold
+  private_nh_.param("use_er", use_er_, true);
+  private_nh_.param("sum_cov_xx_yy_th", sum_cov_xx_yy_th_, 0.8);
+  private_nh_.param("pf_entropy_th", pf_entropy_th_, 3.0);
+  private_nh_.param("alpha_threshold", alpha_threshold_, 2.0);
+
+  //GR threshold
+  private_nh_.param("use_gr", use_gr_, true);
+  private_nh_.param("kl_divergence_th", kl_divergence_th_, 10.0);
+  private_nh_.param("gnss_total_weight_th", gnss_total_weight_th_, 1.5);
+  private_nh_.param("gnss_entropy_th",gnss_entropy_th_, 10.0);
 
   transform_tolerance_.fromSec(tmp_tol);
 
@@ -1348,9 +1372,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     pf_sample_set_t* set = pf_->sets + pf_->current_set; //set current particle
 
     //ER + GR
-    bool use_er = true;
-    bool use_gr = true;
-    if(use_er || use_gr){
+    if(use_er_ || use_gr_){
 
       double sum_cov_xx_yy;
       double total_weight;
@@ -1362,26 +1384,17 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       pf_sample_t sample_tmp[set->sample_count];
 
       //get total weight for ER, pf Entropy
-      if(use_er){
+      if(use_er_){
         sum_cov_xx_yy = set->cov.m[0][0] + set->cov.m[1][1]; 
         total_weight = lasers_[laser_index]->get_total_LFM(&ldata, set);
         pf_entropy = er.get_entropy(set);
       }
 
-      if(use_gr){
+      if(use_gr_){
         for(int i=0; i<set->sample_count; i++){
             sample = set->samples + i;
             sample_tmp[i] = *sample; //tmp samples
         }
-
-        //gnss_t element
-        //gnss_.pose.v[0]= set->mean.v[0] + 100;
-        //gnss_.pose.v[1]= set->mean.v[1] + 100;
-        //gnss_.cov.m[0][0]=set->cov.m[0][0]+1;
-        //gnss_.cov.m[0][1]=0.0;
-        //gnss_.cov.m[1][0]=0.0;
-        //gnss_.cov.m[1][1]=set->cov.m[1][1]+1;
-        //gnss_.weight=0.0;
 
         //get KL divergence
         kl_divergence = gr.calc_kl_divergence(set, gnss_);
@@ -1401,22 +1414,14 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       }
 
       //ER threshold
-      double sum_cov_xx_yy_th = 0.8;
-      double pf_entropy_th = 3.0;
-      double alpha_threshold = 2.0;
-      double beta = 1- (total_weight/alpha_threshold);
-
-      //GR threshold
-      double kl_divergence_th = 10;
-      double gnss_total_weight_th = 1.5;
-      double gnss_entropy_th = 10.0;
+      double beta = 1- (total_weight/alpha_threshold_);
       
       if(beta > 0 ){
-        if(use_er && pf_entropy < pf_entropy_th){
+        if(use_er_ && pf_entropy < pf_entropy_th_){
           ROS_WARN("row match ratio, expansion resetting.");
           er.run(set);
         }
-        else if(use_gr && kl_divergence > kl_divergence_th && gnss_total_weight > gnss_total_weight_th && gnss_entropy < gnss_entropy_th){
+        else if(use_gr_ && kl_divergence > kl_divergence_th_ && gnss_total_weight > gnss_total_weight_th_ && gnss_entropy < gnss_entropy_th_){
           ROS_WARN("row match ratio and high covariance, gnss resetting.");
           gr.sampling(set, gnss_);
         }
