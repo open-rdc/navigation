@@ -1417,6 +1417,20 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       double beta = 1- (total_weight/alpha_threshold_);
       
       if(beta > 0 ){
+ 
+        //in prior method
+        /*
+        if(use_er_ && kl_divergence < kl_divergence_th_ && pf_entropy < pf_entropy_th_){
+            ROS_WARN("row match ratio, expansion resetting.");
+            er.run(set);  
+        }
+        else if(use_gr_){
+            ROS_WARN("row match ratio and high covariance, gnss resetting.");
+            gr.sampling(set, gnss_);
+        }
+        */
+
+        //proposed_method
         if(use_er_ && pf_entropy < pf_entropy_th_){
           ROS_WARN("row match ratio, expansion resetting.");
           er.run(set);
