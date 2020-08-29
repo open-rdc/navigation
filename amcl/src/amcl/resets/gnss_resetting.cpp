@@ -91,13 +91,16 @@ double AMCLGnssResetting::get_entropy(gnss_t gnss){
 }
 
 void
-AMCLGnssResetting::sampling(pf_sample_set_t *set, const gnss_t gnss){
+AMCLGnssResetting::sampling(pf_sample_set_t *set, const gnss_t gnss, double beta=1.0){
 	pf_sample_t *sample;
 
     std::normal_distribution<>::param_type param_x(0.0, std::sqrt(gnss.cov.m[0][0]));
     std::normal_distribution<>::param_type param_y(0.0, std::sqrt(gnss.cov.m[1][1]));
 
-    for(int i=0; i<set->sample_count; i++){
+    int sample_count = int(set->sample_count * beta);
+    //std::cout << sample_count <<std::endl;
+
+    for(int i=0; i < sample_count; i++){
             sample = set->samples + i;
 			sample->pose.v[0] = gnss.pose.v[0] + dist_x(engine_, param_x);
 			sample->pose.v[1] = gnss.pose.v[1] + dist_y(engine_, param_y);

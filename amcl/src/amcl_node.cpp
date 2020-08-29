@@ -1403,7 +1403,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         gnss_entropy = gr.get_entropy(gnss_);
 
         //get total weight for GR
-        gr.sampling(set, gnss_);
+        gr.sampling(set, gnss_, 1.0);
         gnss_total_weight = lasers_[laser_index]->get_total_LFM(&ldata, set);
 
         //overwriting particle info before get total weight for GR
@@ -1426,7 +1426,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }
         else if(use_gr_){
             ROS_WARN("row match ratio and high covariance, gnss resetting.");
-            gr.sampling(set, gnss_);
+            gr.sampling(set, gnss_, 1.0);
         }
         */
 
@@ -1437,7 +1437,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }
         else if(use_gr_ && kl_divergence > kl_divergence_th_ && gnss_total_weight > gnss_total_weight_th_ && gnss_entropy < gnss_entropy_th_){
           ROS_WARN("row match ratio and high covariance, gnss resetting.");
-          gr.sampling(set, gnss_);
+          gr.sampling(set, gnss_, 1.0);
         }
       }
 

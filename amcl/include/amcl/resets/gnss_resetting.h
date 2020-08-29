@@ -40,7 +40,7 @@ public:
     virtual double calc_kl_divergence(pf_sample_set_t *set, const gnss_t gnss);
     virtual double get_gaussian(pf_sample_set_t * set, gnss_t gnss);
     virtual double get_entropy(gnss_t gnss);
-    virtual void sampling(pf_sample_set_t *set, const gnss_t gnss);
+    virtual void sampling(pf_sample_set_t *set, const gnss_t gnss, double beta);
 };
 
 }//namespace amcl
