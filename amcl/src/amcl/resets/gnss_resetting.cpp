@@ -94,8 +94,16 @@ void
 AMCLGnssResetting::sampling(pf_sample_set_t *set, const gnss_t gnss, double beta=1.0){
 	pf_sample_t *sample;
 
+    //dynamic
+    
     std::normal_distribution<>::param_type param_x(0.0, std::sqrt(gnss.cov.m[0][0]));
     std::normal_distribution<>::param_type param_y(0.0, std::sqrt(gnss.cov.m[1][1]));
+    
+    //static
+    /*
+    std::normal_distribution<>::param_type param_x(0.0, 2.0);
+    std::normal_distribution<>::param_type param_y(0.0, 2.0);
+    /*
 
     int sample_count = int(set->sample_count * beta);
     //std::cout << sample_count <<std::endl;

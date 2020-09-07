@@ -498,13 +498,13 @@ AmclNode::AmclNode() :
   private_nh_.param("use_er", use_er_, true);
   private_nh_.param("sum_cov_xx_yy_th", sum_cov_xx_yy_th_, 0.8);
   private_nh_.param("pf_entropy_th", pf_entropy_th_, 3.0);
-  private_nh_.param("alpha_threshold", alpha_threshold_, 2.0);
+  private_nh_.param("alpha_threshold", alpha_threshold_, 1.5);
 
   //GR threshold
   private_nh_.param("use_gr", use_gr_, true);
   private_nh_.param("kl_divergence_th", kl_divergence_th_, 10.0);
-  private_nh_.param("gnss_total_weight_th", gnss_total_weight_th_, 1.5);
-  private_nh_.param("gnss_entropy_th",gnss_entropy_th_, 10.0);
+  private_nh_.param("gnss_total_weight_th", gnss_total_weight_th_, 1.0);
+  private_nh_.param("gnss_entropy_th",gnss_entropy_th_, 5.0);
 
   transform_tolerance_.fromSec(tmp_tol);
 
@@ -1419,8 +1419,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       if(beta > 0 ){
  
         //in prior method
-        /*
-        if(use_er_ && kl_divergence < kl_divergence_th_ && pf_entropy < pf_entropy_th_){
+        
+        if(pf_entropy < pf_entropy_th_ || kl_divergence < kl_divergence_th_){
             ROS_WARN("row match ratio, expansion resetting.");
             er.run(set);  
         }
@@ -1428,17 +1428,18 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             ROS_WARN("row match ratio and high covariance, gnss resetting.");
             gr.sampling(set, gnss_, 1.0);
         }
-        */
-
+        
+        /*
         //proposed_method
-        if(use_er_ && pf_entropy < pf_entropy_th_){
+        if(use_er_ && pf_entropy < gnss_entropy){
           ROS_WARN("row match ratio, expansion resetting.");
           er.run(set);
         }
-        else if(use_gr_ && kl_divergence > kl_divergence_th_ && gnss_total_weight > gnss_total_weight_th_ && gnss_entropy < gnss_entropy_th_){
+        else if(use_gr_ && gnss_total_weight > total_weight){
           ROS_WARN("row match ratio and high covariance, gnss resetting.");
           gr.sampling(set, gnss_, 1.0);
         }
+        */
       }
 
       ROS_ERROR("sum_cov_xx_yy = %lf",sum_cov_xx_yy);
