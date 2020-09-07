@@ -8,10 +8,13 @@ using namespace amcl;
 
 AMCLExpansionResetting::AMCLExpansionResetting():engine_(seed_gen_())
 {
-    expansion_rate_ = 0.2;
+    expansion_rate_ = 0.1;
+    expansion_yaw_rate_ = 0.05;
 
     std::normal_distribution<>::param_type param(0.0, expansion_rate_);
+    std::normal_distribution<>::param_type yaw_param(0.0, expansion_yaw_rate_);
     dist_.param(param);
+    yaw_dist_.param(param);
 
 }
 
@@ -32,7 +35,7 @@ void AMCLExpansionResetting::run(pf_sample_set_t *set){
         sample = set->samples + i;
         sample->pose.v[0] += dist_(engine_);
         sample->pose.v[1] += dist_(engine_);
-        sample->pose.v[2] += dist_(engine_);
+        sample->pose.v[2] += yaw_dist_(engine_);
 
         sample->weight = 1.0 / set->sample_count;
     }

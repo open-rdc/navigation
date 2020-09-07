@@ -46,6 +46,7 @@ catkin_package(
     tf2
     tf2_msgs
     tf2_ros
+    jsk_rviz_plugins
   INCLUDE_DIRS include
   LIBRARIES amcl_sensors amcl_map amcl_pf amcl_resets
 )

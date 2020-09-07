@@ -10,9 +10,11 @@ namespace amcl{
     {
     private:
         double expansion_rate_;
+        double expansion_yaw_rate_;
         std::random_device seed_gen_;
         std::default_random_engine engine_;
         std::normal_distribution<> dist_;
+        std::normal_distribution<> yaw_dist_;
 
     public:
          AMCLExpansionResetting();

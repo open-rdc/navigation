@@ -40,6 +40,7 @@
     <depend>tf2_msgs</depend>
     <depend>tf2_ros</depend>
     <depend>eigen3</depend>
+    <depend>jsk_rviz_plugins</depend>
 
     <test_depend>map_server</test_depend>
     <test_depend>rostest</test_depend>

@@ -25,6 +25,8 @@
 #include <map>
 #include <cmath>
 #include <memory>
+#include <string>
+#include <sstream>
 
 #include <boost/bind.hpp>
 #include <boost/thread/mutex.hpp>
@@ -55,6 +57,7 @@
 #include "nav_msgs/SetMap.h"
 #include "std_srvs/Empty.h"
 #include "nav_msgs/Odometry.h"
+#include "jsk_rviz_plugins/OverlayMenu.h"
 
 // For transform support
 #include "tf2/LinearMath/Transform.h"
@@ -240,6 +243,12 @@ class AmclNode
     double kl_divergence_th_;
     double gnss_total_weight_th_;
     double gnss_entropy_th_;
+
+    ros::Publisher menu_pub_;
+    jsk_rviz_plugins::OverlayMenu menu;
+    std::string er_str_;
+    std::string gr_str_;
+    int er_reset_count_, gr_reset_count_;
 
     gnss_t gnss_;
     gnss_t filter_gnss_;
@@ -498,11 +507,11 @@ AmclNode::AmclNode() :
   private_nh_.param("use_er", use_er_, true);
   private_nh_.param("sum_cov_xx_yy_th", sum_cov_xx_yy_th_, 0.8);
   private_nh_.param("pf_entropy_th", pf_entropy_th_, 3.0);
-  private_nh_.param("alpha_threshold", alpha_threshold_, 1.5);
+  private_nh_.param("alpha_threshold", alpha_threshold_, 1.4);
 
   //GR threshold
   private_nh_.param("use_gr", use_gr_, true);
-  private_nh_.param("kl_divergence_th", kl_divergence_th_, 10.0);
+  private_nh_.param("kl_divergence_th", kl_divergence_th_, 20.0);
   private_nh_.param("gnss_total_weight_th", gnss_total_weight_th_, 1.0);
   private_nh_.param("gnss_entropy_th",gnss_entropy_th_, 5.0);
 
@@ -564,8 +573,20 @@ AmclNode::AmclNode() :
   diagnosic_updater_.setHardwareID("None");
   diagnosic_updater_.add("Standard deviation", this, &AmclNode::standardDeviationDiagnostics);
 
+  //GNSS Subscirber
   gnss_pose_sub_ = nh_.subscribe("gps/position", 1, &AmclNode::gnssPoseReceived, this);
   gnss_odom_sub_ = nh_.subscribe("gps/odometry", 1, &AmclNode::gnssOdomReceived, this);
+  menu_pub_ = nh_.advertise<jsk_rviz_plugins::OverlayMenu>("menu", 1);
+
+  //Menu Property
+  menu.action = jsk_rviz_plugins::OverlayMenu::ACTION_SELECT;
+  menu.current_index = 0;
+  menu.menus.resize(2);
+  menu.title = "Reset Counter";
+  er_str_ = "ER: ";
+  gr_str_ = "GR: ";
+  er_reset_count_ = 0;
+  gr_reset_count_ = 0;
 
 }
 
@@ -1419,28 +1440,43 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       if(beta > 0 ){
  
         //in prior method
-        
+        /*
         if(pf_entropy < pf_entropy_th_ || kl_divergence < kl_divergence_th_){
             ROS_WARN("row match ratio, expansion resetting.");
-            er.run(set);  
+            er.run(set);
+            er_reset_count_ +=1;  
         }
         else if(use_gr_){
             ROS_WARN("row match ratio and high covariance, gnss resetting.");
             gr.sampling(set, gnss_, 1.0);
+            gr_reset_count_ +=1;
         }
+        */
         
-        /*
         //proposed_method
+        
         if(use_er_ && pf_entropy < gnss_entropy){
           ROS_WARN("row match ratio, expansion resetting.");
           er.run(set);
+          er_reset_count_ +=1; 
         }
         else if(use_gr_ && gnss_total_weight > total_weight){
           ROS_WARN("row match ratio and high covariance, gnss resetting.");
           gr.sampling(set, gnss_, 1.0);
+          gr_reset_count_ +=1;
         }
-        */
+        
+        
       }
+
+      std::stringstream er_ss; 
+      er_ss << er_str_ << er_reset_count_;
+      std::stringstream gr_ss;
+      gr_ss << gr_str_ << gr_reset_count_;
+
+      menu.menus[0] = er_ss.str();
+      menu.menus[1] = gr_ss.str();
+      menu_pub_.publish(menu);
 
       ROS_ERROR("sum_cov_xx_yy = %lf",sum_cov_xx_yy);
       ROS_ERROR("beta = %lf",beta);
