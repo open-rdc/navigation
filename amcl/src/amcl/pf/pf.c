@@ -293,13 +293,11 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
     for (i = 0; i < set->sample_count; i++)
     {
       sample = set->samples + i;
-      w_avg += sample->weight;
+      w_sum += sample->weight*sample->weight;
       sample->weight /= total;
       set->n_effective += sample->weight*sample->weight;
     }
     // Update running averages of likelihood of samples (Prob Rob p258)
-    w_sum = w_avg;
-    w_avg /= set->sample_count;
     if(pf->w_slow == 0.0)
       pf->w_slow = w_avg;
     else
@@ -308,13 +306,9 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
       pf->w_fast = w_avg;
     else
       pf->w_fast += pf->alpha_fast * (w_avg - pf->w_fast);
-    //printf("w_avg: %e slow: %e fast: %e\n", 
-           //w_avg, pf->w_slow, pf->w_fast);
 
     /*----------------------------------------------------------------------------------*/
-    //pf->alpha=1.2;
     double beta = 1.0 - (w_sum / pf->alpha);
-    printf("beta : %lf w_sum : %lf pf->alpha : %lf\n", beta,w_sum,pf->alpha);
     if(beta > 0.0 && w_v < pf->reset_th_cov && pf->do_reset){    //誘拐状態
        double x_sum = 0.0, y_sum = 0.0, theta_sum = 0.0;		//パラメータの和
        double x_sumv = 0.0, y_sumv = 0.0, theta_sumv = 0.0;	    //２乗和
